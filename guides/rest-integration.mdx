@@ -1,5 +1,5 @@
 ---
-title: "Integrate Veyra from Any Language via REST"
+title: "Integrate Veyra via REST API from Any Language or Runtime"
 sidebarTitle: "REST Integration"
 description: "Use Veyra's REST API directly from Python, Go, Rust, or any HTTP client — no SDK required. All endpoints accept JSON and return JSON."
 ---
@@ -386,6 +386,13 @@ All three telemetry operations — logging events, sending heartbeats, and readi
 ### Log an event
 
 <CodeGroup>
+
+```bash cURL
+curl -X POST "https://api.strixhost.xyz/v1/events" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer veyra_your_api_key_here" \
+  -d '{"level": "error", "message": "Database connection failed", "source": "Payment-Service", "environment": "production"}'
+```
 
 ```python Python
 import requests

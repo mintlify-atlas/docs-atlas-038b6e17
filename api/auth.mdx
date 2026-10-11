@@ -1,7 +1,7 @@
 ---
-title: "Authentication API — Register and Login to Veyra"
+title: "Veyra Auth API — Register, Login, and Get JWT Token"
 sidebarTitle: "Auth"
-description: "POST /v1/auth/register creates a new account. POST /v1/auth/login returns a JWT token used for all account management endpoints."
+description: "POST /v1/auth/register creates a new Veyra account. POST /v1/auth/login returns a JWT for account management calls. Both accept email and password."
 ---
 
 These two endpoints bootstrap your Veyra account — register once to create your developer profile, then log in whenever you need a fresh JWT. That token is required for all account management operations, including creating projects and generating API keys.
@@ -25,7 +25,7 @@ Creates a new Veyra developer account.
 ### Example request
 
 ```bash
-curl -X POST https://api.strixhost.xyz/v1/auth/register \
+curl -X POST "https://api.strixhost.xyz/v1/auth/register" \
   -H "Content-Type: application/json" \
   -d '{"email": "dev@example.com", "password": "supersecure123"}'
 ```
@@ -80,7 +80,7 @@ Authenticates an existing account with email and password, and returns a signed 
 <CodeGroup>
 
 ```bash cURL
-curl -X POST https://api.strixhost.xyz/v1/auth/login \
+curl -X POST "https://api.strixhost.xyz/v1/auth/login" \
   -H "Content-Type: application/json" \
   -d '{"email": "dev@example.com", "password": "supersecure123"}'
 ```

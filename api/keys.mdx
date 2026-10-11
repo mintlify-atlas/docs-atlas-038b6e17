@@ -1,7 +1,7 @@
 ---
-title: "API Keys — Generate Project Credentials in Veyra"
+title: "API Keys — Generate Veyra Project Credentials Securely"
 sidebarTitle: "API Keys"
-description: "POST /v1/projects/:id/keys generates a new API key for a project. Keys authenticate telemetry calls for events, heartbeats, and incidents."
+description: "POST /v1/projects/:id/keys generates a named API key for a Veyra project. Keys are returned once only and authenticate all telemetry requests."
 ---
 
 API keys authenticate all telemetry requests sent to Veyra — events, heartbeat pings, and incident reports. Each project can hold multiple named keys, making it straightforward to issue separate credentials per service, environment, or CI pipeline. Every key is prefixed with `veyra_` so they are easy to identify in logs and config files.
@@ -39,7 +39,7 @@ Generates a new named API key for the specified project.
 <CodeGroup>
 
 ```bash cURL
-curl -X POST https://api.strixhost.xyz/v1/projects/YOUR_PROJECT_ID/keys \
+curl -X POST "https://api.strixhost.xyz/v1/projects/$PROJECT_ID/keys" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_JWT_TOKEN" \
   -d '{"name": "Production API Key"}'
@@ -110,7 +110,7 @@ console.log(data.key);
 Once you have a `veyra_` key, pass it as a `Bearer` token in the `Authorization` header of any telemetry request. The example below sends an info-level event to `/v1/events`:
 
 ```bash cURL
-curl -X POST https://api.strixhost.xyz/v1/events \
+curl -X POST "https://api.strixhost.xyz/v1/events" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer veyra_your_key_here" \
   -d '{"level": "info", "message": "App started", "source": "API", "environment": "production"}'

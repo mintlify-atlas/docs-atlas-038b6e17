@@ -1,7 +1,7 @@
 ---
-title: "Projects API — Create and Manage Veyra Projects"
+title: "Projects API — Create Monitoring Projects in Veyra"
 sidebarTitle: "Projects"
-description: "POST /v1/projects creates a new monitoring project. Projects organize your API keys, events, and heartbeat configuration. Requires JWT auth."
+description: "POST /v1/projects creates a new monitoring project scoped to your account. Requires a JWT Bearer token. Returns a project ID used for key generation."
 ---
 
 Projects are the top-level resource in Veyra — every API key, telemetry event, and heartbeat check belongs to exactly one project. Each project carries a unique ID, its own set of named API keys, and a configurable heartbeat interval that defines how often a healthy service is expected to check in.
@@ -39,7 +39,7 @@ Creates a new monitoring project under your account.
 ### Example request
 
 ```bash cURL
-curl -X POST https://api.strixhost.xyz/v1/projects \
+curl -X POST "https://api.strixhost.xyz/v1/projects" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_JWT_TOKEN" \
   -d '{"name": "My Go Backend", "environment": "production", "heartbeatInterval": 60000}'
