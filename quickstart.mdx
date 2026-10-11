@@ -1,47 +1,139 @@
 ---
-title: "Quickstart"
-description: "Begin with a guide on the fastest path to a successful outcome"
+title: "Get Started with Veyra in 5 Minutes"
+sidebarTitle: "Quickstart"
+description: "Learn how to register, create a project, generate an API key, and send your first event and heartbeat to Veyra in under five minutes."
 ---
 
-Describe how someone begins using your product. What is the first thing they need to do? Are there any prerequisites?
-
-A quickstart should take someone from zero to using your product. They'll get a quick win and a sense of what they can accomplish.
-
-## Prerequisites
-
-Before you begin, you must have:
-
-- Requirement one (for example, Node.js 18+, a free account, an API key)
-- Requirement two (for example, a compatible device, a compatible browser, a compatible operating system)
-
-## Get started
+By the end of this guide, you'll have a Veyra account, a configured project, a working API key, and your first event and heartbeat recorded — all in under five minutes. No SDK required; every step uses plain HTTP requests you can run from your terminal.
 
 <Steps>
-  <Step title="Install">
-    Describe how to install your product or sign up.
+
+  <Step title="Register an account">
+    Create your Veyra account by sending your email and password to the registration endpoint. No email verification is required to get started.
 
     ```bash
-    npm install your-package
+    curl -X POST https://api.strixhost.xyz/v1/auth/register \
+      -H "Content-Type: application/json" \
+      -d '{
+        "email": "dev@example.com",
+        "password": "supersecure123"
+      }'
     ```
+
+    A successful response will confirm your account has been created. You're ready to log in.
   </Step>
-  <Step title="Configure">
-    Describe any setup or configuration needed before first use.
+
+  <Step title="Log in and save your JWT token">
+    Authenticate with the same credentials to receive a JWT token. This token is your management credential — you'll need it to create projects and generate API keys.
 
     ```bash
-    your-cli init
+    curl -X POST https://api.strixhost.xyz/v1/auth/login \
+      -H "Content-Type: application/json" \
+      -d '{
+        "email": "dev@example.com",
+        "password": "supersecure123"
+      }'
     ```
-  </Step>
-  <Step title="Run it">
-    Show the first thing a user does to see it working.
+
+    The response will include a `token` field. Copy the value and store it in your shell session:
 
     ```bash
-    your-cli start
+    export JWT_TOKEN="your_jwt_token_here"
+    ```
+
+    <Note>
+      JWT tokens are short-lived management credentials. Do not embed them in your application code or services — they are only meant for administrative operations like the ones in the next two steps.
+    </Note>
+  </Step>
+
+  <Step title="Create a project">
+    Projects are the top-level containers for your events, heartbeats, and incidents. Create one by providing a name, an environment label, and a heartbeat interval in milliseconds.
+
+    ```bash
+    curl -X POST https://api.strixhost.xyz/v1/projects \
+      -H "Content-Type: application/json" \
+      -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+      -d '{
+        "name": "My Backend",
+        "environment": "production",
+        "heartbeatInterval": 60000
+      }'
+    ```
+
+    The response will include an `id` field — this is your **project ID**. Save it; you'll use it in the next step and when sending heartbeats.
+
+    ```bash
+    export PROJECT_ID="your_project_id_here"
     ```
   </Step>
+
+  <Step title="Generate an API key">
+    API keys are scoped to a single project and used by your services to send telemetry. Generate one now for the project you just created.
+
+    ```bash
+    curl -X POST https://api.strixhost.xyz/v1/projects/YOUR_PROJECT_ID/keys \
+      -H "Content-Type: application/json" \
+      -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+      -d '{
+        "name": "Production API Key"
+      }'
+    ```
+
+    The response will include the full API key, prefixed with `veyra_`. Save it immediately:
+
+    ```bash
+    export VEYRA_API_KEY="veyra_your_api_key_here"
+    ```
+
+    <Warning>
+      **Your API key is only shown once.** Veyra does not store the plaintext key after generation — if you lose it, you'll need to generate a new one. Save it to a secure location (such as a password manager or secrets manager) before closing this terminal session.
+    </Warning>
+  </Step>
+
+  <Step title="Send your first event">
+    Events are structured log entries — errors, warnings, or informational messages — sent from your services using your API key. Send a test event now:
+
+    ```bash
+    curl -X POST https://api.strixhost.xyz/v1/events \
+      -H "Content-Type: application/json" \
+      -H "Authorization: Bearer veyra_YOUR_API_KEY" \
+      -d '{
+        "level": "error",
+        "message": "Database connection failed",
+        "source": "Payment-Service",
+        "environment": "production"
+      }'
+    ```
+
+    A successful response confirms the event was ingested. You should see it appear in your project's event feed.
+  </Step>
+
+  <Step title="Send a heartbeat ping">
+    Heartbeats let Veyra know that a service, cron job, or bot is still alive. Ping your project's heartbeat endpoint to register a successful check-in:
+
+    ```bash
+    curl -X POST https://api.strixhost.xyz/v1/heartbeats/YOUR_PROJECT_ID \
+      -H "Authorization: Bearer veyra_YOUR_API_KEY"
+    ```
+
+    If Veyra stops receiving pings within the `heartbeatInterval` you configured (60 seconds in this example), it will mark the service as down and trigger an alert.
+
+    <Tip>
+      In production, schedule this request to run at an interval shorter than your configured `heartbeatInterval` — for example, every 30 seconds for a 60-second interval — to avoid false-positive downtime alerts due to network jitter.
+    </Tip>
+  </Step>
+
 </Steps>
 
-<Tip>
-  Give people a way to get help. This could be a link to a support page, a chat with a customer support agent, or a forum for your product.
+You've registered an account, created a project, generated an API key, and sent both an event and a heartbeat. Your Veyra integration is live.
 
-  Example: Need help? Reach out to us at [support@yourcompany.com](mailto:support@yourcompany.com).
-</Tip>
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Authentication" icon="key" href="/authentication">
+    Understand the full two-tier auth model — when to use JWT tokens versus API keys, and how to keep both secure.
+  </Card>
+  <Card title="Node.js Monitoring Guide" icon="node-js" href="/guides/nodejs-monitoring">
+    Learn how to integrate Veyra into a Node.js application to capture unhandled errors, process events, and report heartbeats automatically.
+  </Card>
+</CardGroup>

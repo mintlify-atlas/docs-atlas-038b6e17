@@ -1,0 +1,56 @@
+---
+title: "Veyra: Self-Hosted Monitoring and Incident Management"
+sidebarTitle: "Introduction"
+description: "Veyra is a lightweight, self-hosted developer infrastructure platform for event logging, uptime monitoring, and SaaS incident management via a REST API."
+---
+
+Veyra is a self-hosted developer infrastructure platform built for teams who want full control over their observability stack. Whether you're tracking errors in a Node.js service, monitoring the uptime of a Discord bot, or managing SaaS incidents, Veyra gives you a single REST API to route events, heartbeats, and incidents — all running on infrastructure you own.
+
+<Note>
+  Veyra is designed for developers who prefer to self-host their tooling rather than rely on third-party SaaS observability providers. You deploy it, you own the data.
+</Note>
+
+## Core capabilities
+
+<CardGroup cols={3}>
+  <Card title="Events" icon="bolt" href="/concepts/events">
+    Log structured events from any service — errors, warnings, and informational messages — with level, source, and environment tagging.
+  </Card>
+  <Card title="Heartbeats" icon="heart-pulse" href="/concepts/heartbeats">
+    Monitor uptime for cron jobs, Discord bots, and background workers by sending periodic ping signals to a project endpoint.
+  </Card>
+  <Card title="Incidents" icon="triangle-exclamation" href="/concepts/incidents">
+    Create, update, and resolve incidents programmatically to keep your team and users informed during outages or degraded service.
+  </Card>
+</CardGroup>
+
+## How it works
+
+Veyra uses a **two-tier authentication model** that separates account management from telemetry ingestion:
+
+- **JWT tokens** are issued when you log in via `/v1/auth/login`. Use these to manage your account, create projects, and generate API keys. JWTs are short-lived credentials scoped to administrative actions.
+- **API keys** are generated per-project and prefixed with `veyra_`. Use these to send events, heartbeats, and incidents from your applications and services. They're designed to be embedded in your runtime environment — not in your browser sessions.
+
+<Tip>
+  Keep your JWT token out of your application code. It's a management credential. Your services should only ever hold a `veyra_`-prefixed API key.
+</Tip>
+
+This separation means a compromised telemetry key can never be used to modify your account, create new projects, or generate additional credentials — limiting the blast radius of any accidental exposure.
+
+## Language support
+
+Veyra exposes a plain REST API over HTTPS, which means you can integrate it from **any language or runtime** that can make HTTP requests — Node.js, Python, Go, Rust, Ruby, or anything else.
+
+<Info>
+  An official **TypeScript SDK** is available for Node.js projects and provides typed wrappers around all API endpoints, making integration faster and reducing boilerplate in your backend services.
+</Info>
+
+For all other languages, the examples throughout this documentation use `curl` to illustrate the raw HTTP calls, which you can translate directly into your preferred HTTP client.
+
+## Self-hosted
+
+Veyra runs entirely on your own infrastructure. There is no external dependency on a managed cloud service — you deploy the Veyra server, point your applications at your own base URL (e.g., `https://api.strixhost.xyz`), and all data stays within your environment.
+
+<Note>
+  Because you control the deployment, you're also responsible for uptime, backups, and security hardening of the Veyra server itself. See the self-hosting guide for recommended deployment configurations.
+</Note>

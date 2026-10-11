@@ -1,0 +1,89 @@
+---
+title: "Projects API — Create and Manage Veyra Projects"
+sidebarTitle: "Projects"
+description: "POST /v1/projects creates a new monitoring project. Projects organize your API keys, events, and heartbeat configuration. Requires JWT auth."
+---
+
+Projects are the top-level resource in Veyra — every API key, telemetry event, and heartbeat check belongs to exactly one project. Each project carries a unique ID, its own set of named API keys, and a configurable heartbeat interval that defines how often a healthy service is expected to check in.
+
+<Note>
+  All project endpoints require a valid JWT Bearer token. Obtain one by calling [POST /v1/auth/login](/api/auth#post-v1-auth-login) and include it as `Authorization: Bearer YOUR_JWT_TOKEN` on every request.
+</Note>
+
+---
+
+## POST /v1/projects
+
+Creates a new monitoring project under your account.
+
+### Authorization
+
+| Header | Value |
+| ------ | ----- |
+| `Authorization` | `Bearer YOUR_JWT_TOKEN` |
+
+### Request body
+
+<ParamField body="name" type="string" required>
+  A human-readable name for the project (e.g. `"My Go Backend"`). This label appears throughout the Veyra dashboard and in alert notifications.
+</ParamField>
+
+<ParamField body="environment" type="string" required>
+  The deployment environment this project represents. Accepted values: `"production"`, `"staging"`, `"development"`.
+</ParamField>
+
+<ParamField body="heartbeatInterval" type="number" required>
+  Expected ping frequency in milliseconds. Veyra will raise an incident if no heartbeat is received within this window. For example, `60000` expects a ping every 60 seconds.
+</ParamField>
+
+### Example request
+
+```bash cURL
+curl -X POST https://api.strixhost.xyz/v1/projects \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -d '{"name": "My Go Backend", "environment": "production", "heartbeatInterval": 60000}'
+```
+
+### Response
+
+<ResponseField name="id" type="string">
+  Unique project identifier. Save this — it is used as the `:id` path parameter in heartbeat pings and API key generation requests.
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  The human-readable name you supplied at creation time.
+</ResponseField>
+
+<ResponseField name="environment" type="string">
+  The deployment environment for this project.
+</ResponseField>
+
+<ResponseField name="heartbeatInterval" type="number">
+  The expected ping frequency in milliseconds.
+</ResponseField>
+
+<ResponseField name="createdAt" type="string">
+  ISO 8601 timestamp of when the project was created.
+</ResponseField>
+
+```json 201 Created
+{
+  "id": "proj_03k2mzr7w9g1q5s8v4u0",
+  "name": "My Go Backend",
+  "environment": "production",
+  "heartbeatInterval": 60000,
+  "createdAt": "2025-01-15T11:00:00.000Z"
+}
+```
+
+### Error responses
+
+| Status | Description |
+| ------ | ----------- |
+| `400 Bad Request` | One or more required fields are missing or contain invalid values. |
+| `401 Unauthorized` | The JWT token is missing, invalid, or has expired. Obtain a fresh token via [/v1/auth/login](/api/auth#post-v1-auth-login). |
+
+<Tip>
+  Copy the `id` from the response and store it alongside your project config. You will need it to [generate API keys](/api/keys) (`POST /v1/projects/:id/keys`) and to route heartbeat pings to the correct project.
+</Tip>

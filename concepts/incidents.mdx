@@ -1,0 +1,100 @@
+---
+title: "Incidents: Programmatic Alerting via Discord Webhooks"
+sidebarTitle: "Incidents"
+description: "Incidents let you trigger structured alerts from your code when critical failures occur. Veyra fires your configured Discord webhook automatically."
+---
+
+An **incident** is a structured, critical-severity alert that your application triggers programmatically when something has gone seriously wrong. Unlike events — which are high-volume telemetry records meant to be queried in aggregate — each incident is an individual, actionable signal that demands immediate attention. When you create an incident, Veyra immediately forwards it to the Discord webhook configured on the project, delivering a formatted notification to your on-call channel without any additional integration work on your part.
+
+---
+
+## Incident fields
+
+<ParamField body="type" type="string" required>
+  A short category label that identifies the kind of failure (e.g. `"database_failure"`, `"payment_error"`, `"bot_offline"`, `"sla_breach"`). Keep type values consistent across your codebase so you can recognise patterns at a glance in your Discord channel.
+</ParamField>
+
+<ParamField body="summary" type="string" required>
+  A human-readable description of exactly what happened. This text appears directly in the Discord notification, so write it for the person who will be woken up at 3 a.m. — include what failed, any relevant IDs or thresholds, and ideally a first-response action.
+</ParamField>
+
+---
+
+## Triggering an incident
+
+Send a `POST` request to `/v1/incidents` with your project API key. The request body requires only `type` and `summary`.
+
+```bash
+curl -X POST https://api.strixhost.xyz/v1/incidents \
+  -H "Authorization: Bearer veyra_YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "type": "database_failure",
+    "summary": "Main PostgreSQL cluster stopped responding"
+  }'
+```
+
+```python
+import requests
+
+response = requests.post(
+    "https://api.strixhost.xyz/v1/incidents",
+    headers={
+        "Authorization": "Bearer veyra_YOUR_API_KEY",
+        "Content-Type": "application/json",
+    },
+    json={
+        "type": "database_failure",
+        "summary": "Main PostgreSQL cluster stopped responding",
+    },
+)
+
+response.raise_for_status()
+print("Incident created:", response.json())
+```
+
+A `201 Created` response confirms the incident was recorded and the Discord webhook has been fired.
+
+<Tip>
+  Pack your `summary` with actionable context. Instead of `"Database is down"`, write something like `"Primary Postgres replica db-prod-1 unreachable for 45 s — check RDS console and verify security group rules"`. The person reading the alert in Discord should know what to do without having to look anything up first.
+</Tip>
+
+---
+
+## Discord webhook alerts
+
+When an incident is created, Veyra automatically fires the Discord webhook URL that is configured on the parent project. The webhook payload is pre-formatted as a Discord embed containing the incident `type`, `summary`, timestamp, and project name — no custom formatter needed on your end.
+
+To attach a Discord webhook to a project, provide the webhook URL when creating or updating the project. See [Projects](/concepts/projects) for the full project configuration reference.
+
+<Info>
+  Veyra fires the webhook synchronously during incident creation. If the Discord webhook URL is invalid or Discord returns an error, the incident is still persisted in Veyra — you will not lose the record, but the notification may not have been delivered. Keep your webhook URL up to date on the project.
+</Info>
+
+---
+
+## When to trigger incidents
+
+Incidents are a low-volume, high-signal primitive. Reserve them for situations that require an immediate human response:
+
+- **Critical infrastructure failures** — database unreachable, cache cluster down, message queue backlogged beyond threshold.
+- **Payment errors** — failed charges, webhook signature mismatches, Stripe API outages affecting revenue.
+- **Bot offline detection** — your Discord bot has failed to reconnect to the gateway after multiple retries.
+- **SLA breaches** — response time or error rate has crossed a contractual threshold.
+
+---
+
+## Events vs. Incidents
+
+Both events and incidents carry structured data, but they serve very different purposes:
+
+| | Events | Incidents |
+|---|---|---|
+| **Volume** | High — emitted continuously | Low — triggered on exceptional failures only |
+| **Purpose** | Observability & audit trail | Alerting & immediate action |
+| **Storage** | Aggregated into queryable metrics | Stored as individual records |
+| **Notification** | None (query via `/v1/events/metrics`) | Discord webhook fires immediately |
+| **Severity** | `info`, `warn`, `error`, `debug` | Always critical by nature |
+| **Typical rate** | Hundreds to thousands per hour | A handful per day at most |
+
+Use **events** for anything you might want to search, chart, or audit later. Use **incidents** for the failures that wake someone up.

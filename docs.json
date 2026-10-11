@@ -1,72 +1,76 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "mint",
-  "name": "Mintlify Starter Kit",
+  "name": "Veyra SDK",
+  "theme": "luma",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
-  },
-  "favicon": "/favicon.svg",
-  "navigation": {
-    "pages": [
-      {
-        "group": "Getting Started",
-        "pages": [
-          "index",
-          "quickstart"
-        ]
-      }
-    ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
-        },
-        {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
-        }
-      ]
-    }
-  },
-  "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
+    "primary": "#6C63FF",
+    "light": "#8B85FF",
+    "dark": "#4B44CC"
   },
   "navbar": {
-    "links": [
-      {
-        "label": "Support",
-        "href": "mailto:support@mintlify.com"
-      }
-    ],
     "primary": {
-      "type": "button",
-      "label": "Dashboard",
-      "href": "https://app.mintlify.com"
+      "type": "github",
+      "href": "https://github.com/rootSTARYYY/veyrasdk"
     }
-  },
-  "contextual": {
-    "options": [
-      "copy",
-      "view",
-      "chatgpt",
-      "claude",
-      "perplexity",
-      "mcp",
-      "cursor",
-      "vscode"
-    ]
   },
   "footer": {
     "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
+      "github": "https://github.com/rootSTARYYY/veyrasdk"
     }
+  },
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "authentication"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/projects",
+              "concepts/events",
+              "concepts/heartbeats",
+              "concepts/incidents"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/nodejs-monitoring",
+              "guides/discord-bot",
+              "guides/rest-integration"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Account Management",
+            "pages": [
+              "api/auth",
+              "api/projects",
+              "api/keys"
+            ]
+          },
+          {
+            "group": "Telemetry",
+            "pages": [
+              "api/events",
+              "api/heartbeats",
+              "api/incidents"
+            ]
+          }
+        ]
+      }
+    ]
   }
 }

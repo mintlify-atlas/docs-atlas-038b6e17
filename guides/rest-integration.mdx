@@ -1,0 +1,669 @@
+---
+title: "Integrate Veyra from Any Language via REST"
+sidebarTitle: "REST Integration"
+description: "Use Veyra's REST API directly from Python, Go, Rust, or any HTTP client — no SDK required. All endpoints accept JSON and return JSON."
+---
+
+Veyra's API is standard REST over HTTPS — every endpoint accepts a JSON body and returns a JSON response. There is no proprietary wire format, no binary protocol, and no required SDK. If your language or runtime can make an HTTP request, it can integrate with Veyra. This guide walks through the complete setup flow and common telemetry operations in multiple languages so you can drop the relevant snippet directly into your stack.
+
+<Note>
+  **Auth depends on what you're doing.** All telemetry routes (`/v1/events`, `/v1/heartbeats`, `/v1/incidents`) use your **API key** (`veyra_…`) as a Bearer token. Account management routes (`/v1/auth`, `/v1/projects`, `/v1/projects/:id/keys`) require a **JWT token** obtained from `/v1/auth/login`. Never use a JWT in your application services, and never use an API key to call management endpoints.
+</Note>
+
+## Base URL and headers
+
+Every request targets the same base URL. Include the appropriate authorization header for the type of endpoint you are calling.
+
+| Property | Value |
+|---|---|
+| Base URL | `https://api.strixhost.xyz` |
+| Content-Type | `application/json` |
+| Authorization (telemetry) | `Bearer veyra_your_api_key` |
+| Authorization (management) | `Bearer your_jwt_token` |
+
+All requests and responses use UTF-8 encoded JSON. There is no versioned content-type negotiation — the API version is part of the path (`/v1/…`).
+
+## Full setup flow
+
+The following steps take you from zero to sending telemetry. Steps 1–4 use JWT authentication (management operations). Step 5 switches to your API key.
+
+<Steps>
+
+  <Step title="Register an account">
+    Create your Veyra account by posting an email and password to the registration endpoint. No email verification is required.
+
+    <Tabs>
+      <Tab title="cURL">
+        ```bash
+        curl -X POST https://api.strixhost.xyz/v1/auth/register \
+          -H "Content-Type: application/json" \
+          -d '{
+            "email": "dev@example.com",
+            "password": "supersecure123"
+          }'
+        ```
+      </Tab>
+      <Tab title="Python">
+        ```python
+        import requests
+
+        response = requests.post(
+            "https://api.strixhost.xyz/v1/auth/register",
+            json={"email": "dev@example.com", "password": "supersecure123"}
+        )
+        response.raise_for_status()
+        print(response.json())
+        ```
+      </Tab>
+      <Tab title="Go">
+        ```go
+        package main
+
+        import (
+            "bytes"
+            "encoding/json"
+            "fmt"
+            "net/http"
+        )
+
+        func main() {
+            payload, _ := json.Marshal(map[string]string{
+                "email":    "dev@example.com",
+                "password": "supersecure123",
+            })
+
+            resp, err := http.Post(
+                "https://api.strixhost.xyz/v1/auth/register",
+                "application/json",
+                bytes.NewBuffer(payload),
+            )
+            if err != nil {
+                panic(err)
+            }
+            defer resp.Body.Close()
+            fmt.Println("Status:", resp.Status)
+        }
+        ```
+      </Tab>
+      <Tab title="JavaScript">
+        ```javascript
+        const res = await fetch('https://api.strixhost.xyz/v1/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: 'dev@example.com',
+            password: 'supersecure123'
+          })
+        });
+        const data = await res.json();
+        console.log(data);
+        ```
+      </Tab>
+    </Tabs>
+  </Step>
+
+  <Step title="Log in to get a JWT token">
+    Authenticate with the same credentials to receive a JWT. All management operations in the next steps require this token as a Bearer credential.
+
+    <Tabs>
+      <Tab title="cURL">
+        ```bash
+        curl -X POST https://api.strixhost.xyz/v1/auth/login \
+          -H "Content-Type: application/json" \
+          -d '{
+            "email": "dev@example.com",
+            "password": "supersecure123"
+          }'
+        # Response: { "token": "eyJ..." }
+        ```
+      </Tab>
+      <Tab title="Python">
+        ```python
+        import requests
+
+        response = requests.post(
+            "https://api.strixhost.xyz/v1/auth/login",
+            json={"email": "dev@example.com", "password": "supersecure123"}
+        )
+        response.raise_for_status()
+        jwt_token = response.json()["token"]
+        print("JWT:", jwt_token)
+        ```
+      </Tab>
+      <Tab title="Go">
+        ```go
+        package main
+
+        import (
+            "bytes"
+            "encoding/json"
+            "fmt"
+            "io"
+            "net/http"
+        )
+
+        func main() {
+            payload, _ := json.Marshal(map[string]string{
+                "email":    "dev@example.com",
+                "password": "supersecure123",
+            })
+
+            resp, err := http.Post(
+                "https://api.strixhost.xyz/v1/auth/login",
+                "application/json",
+                bytes.NewBuffer(payload),
+            )
+            if err != nil {
+                panic(err)
+            }
+            defer resp.Body.Close()
+
+            body, _ := io.ReadAll(resp.Body)
+            var result map[string]interface{}
+            json.Unmarshal(body, &result)
+            fmt.Println("JWT:", result["token"])
+        }
+        ```
+      </Tab>
+      <Tab title="JavaScript">
+        ```javascript
+        const res = await fetch('https://api.strixhost.xyz/v1/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: 'dev@example.com',
+            password: 'supersecure123'
+          })
+        });
+        const { token } = await res.json();
+        console.log('JWT:', token);
+        ```
+      </Tab>
+    </Tabs>
+  </Step>
+
+  <Step title="Create a project">
+    Projects group all telemetry for a single service. Provide a name, an environment label, and a heartbeat interval in milliseconds. Use your JWT as the Bearer token.
+
+    <Tabs>
+      <Tab title="cURL">
+        ```bash
+        curl -X POST https://api.strixhost.xyz/v1/projects \
+          -H "Content-Type: application/json" \
+          -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+          -d '{
+            "name": "My Service",
+            "environment": "production",
+            "heartbeatInterval": 60000
+          }'
+        # Response includes: { "id": "proj_..." }
+        ```
+      </Tab>
+      <Tab title="Python">
+        ```python
+        import requests
+
+        JWT_TOKEN = "your_jwt_token_here"
+
+        response = requests.post(
+            "https://api.strixhost.xyz/v1/projects",
+            headers={"Authorization": f"Bearer {JWT_TOKEN}"},
+            json={
+                "name": "My Service",
+                "environment": "production",
+                "heartbeatInterval": 60000
+            }
+        )
+        response.raise_for_status()
+        project_id = response.json()["id"]
+        print("Project ID:", project_id)
+        ```
+      </Tab>
+      <Tab title="Go">
+        ```go
+        package main
+
+        import (
+            "bytes"
+            "encoding/json"
+            "fmt"
+            "io"
+            "net/http"
+        )
+
+        func main() {
+            jwtToken := "your_jwt_token_here"
+            payload, _ := json.Marshal(map[string]interface{}{
+                "name":              "My Service",
+                "environment":       "production",
+                "heartbeatInterval": 60000,
+            })
+
+            req, _ := http.NewRequest("POST", "https://api.strixhost.xyz/v1/projects", bytes.NewBuffer(payload))
+            req.Header.Set("Content-Type", "application/json")
+            req.Header.Set("Authorization", "Bearer "+jwtToken)
+
+            client := &http.Client{}
+            resp, err := client.Do(req)
+            if err != nil {
+                panic(err)
+            }
+            defer resp.Body.Close()
+
+            body, _ := io.ReadAll(resp.Body)
+            var result map[string]interface{}
+            json.Unmarshal(body, &result)
+            fmt.Println("Project ID:", result["id"])
+        }
+        ```
+      </Tab>
+      <Tab title="JavaScript">
+        ```javascript
+        const JWT_TOKEN = 'your_jwt_token_here';
+
+        const res = await fetch('https://api.strixhost.xyz/v1/projects', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${JWT_TOKEN}`
+          },
+          body: JSON.stringify({
+            name: 'My Service',
+            environment: 'production',
+            heartbeatInterval: 60000
+          })
+        });
+        const { id: projectId } = await res.json();
+        console.log('Project ID:', projectId);
+        ```
+      </Tab>
+    </Tabs>
+  </Step>
+
+  <Step title="Generate an API key">
+    API keys are scoped to a project and used for all telemetry calls. Generate one for the project you just created. The full key (`veyra_…`) is only returned once.
+
+    <Tabs>
+      <Tab title="cURL">
+        ```bash
+        curl -X POST https://api.strixhost.xyz/v1/projects/YOUR_PROJECT_ID/keys \
+          -H "Content-Type: application/json" \
+          -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+          -d '{ "name": "Production Key" }'
+        # Response includes: { "key": "veyra_..." }
+        ```
+      </Tab>
+      <Tab title="Python">
+        ```python
+        import requests
+
+        JWT_TOKEN = "your_jwt_token_here"
+        PROJECT_ID = "your_project_id_here"
+
+        response = requests.post(
+            f"https://api.strixhost.xyz/v1/projects/{PROJECT_ID}/keys",
+            headers={"Authorization": f"Bearer {JWT_TOKEN}"},
+            json={"name": "Production Key"}
+        )
+        response.raise_for_status()
+        api_key = response.json()["key"]
+        print("API Key:", api_key)  # Save this — shown only once
+        ```
+      </Tab>
+      <Tab title="Go">
+        ```go
+        package main
+
+        import (
+            "bytes"
+            "encoding/json"
+            "fmt"
+            "io"
+            "net/http"
+        )
+
+        func main() {
+            jwtToken  := "your_jwt_token_here"
+            projectID := "your_project_id_here"
+            payload, _ := json.Marshal(map[string]string{"name": "Production Key"})
+
+            req, _ := http.NewRequest(
+                "POST",
+                "https://api.strixhost.xyz/v1/projects/"+projectID+"/keys",
+                bytes.NewBuffer(payload),
+            )
+            req.Header.Set("Content-Type", "application/json")
+            req.Header.Set("Authorization", "Bearer "+jwtToken)
+
+            client := &http.Client{}
+            resp, err := client.Do(req)
+            if err != nil {
+                panic(err)
+            }
+            defer resp.Body.Close()
+
+            body, _ := io.ReadAll(resp.Body)
+            var result map[string]interface{}
+            json.Unmarshal(body, &result)
+            fmt.Println("API Key:", result["key"]) // Save this — shown only once
+        }
+        ```
+      </Tab>
+      <Tab title="JavaScript">
+        ```javascript
+        const JWT_TOKEN  = 'your_jwt_token_here';
+        const PROJECT_ID = 'your_project_id_here';
+
+        const res = await fetch(`https://api.strixhost.xyz/v1/projects/${PROJECT_ID}/keys`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${JWT_TOKEN}`
+          },
+          body: JSON.stringify({ name: 'Production Key' })
+        });
+        const { key: apiKey } = await res.json();
+        console.log('API Key:', apiKey); // Save this — shown only once
+        ```
+      </Tab>
+    </Tabs>
+
+    <Warning>
+      The full API key is only returned at creation time. Veyra does not store the plaintext after generation. Save it to a secrets manager or environment variable immediately.
+    </Warning>
+  </Step>
+
+  <Step title="Send telemetry">
+    With your `veyra_…` API key in hand, switch from JWT auth to API key auth for all telemetry calls. See the [Sending telemetry](#sending-telemetry) section below for full examples in every language.
+  </Step>
+
+</Steps>
+
+## Sending telemetry
+
+All three telemetry operations — logging events, sending heartbeats, and reading metrics — use your API key as the Bearer token.
+
+### Log an event
+
+<CodeGroup>
+
+```python Python
+import requests
+
+API_KEY = "veyra_your_api_key_here"
+
+response = requests.post(
+    "https://api.strixhost.xyz/v1/events",
+    headers={
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {API_KEY}"
+    },
+    json={
+        "level": "error",
+        "message": "Database connection timed out",
+        "source": "UserService",
+        "environment": "production"
+    }
+)
+response.raise_for_status()
+print(response.json())
+```
+
+```go Go
+package main
+
+import (
+    "bytes"
+    "encoding/json"
+    "fmt"
+    "io"
+    "net/http"
+)
+
+func main() {
+    apiKey  := "veyra_your_api_key_here"
+    payload, _ := json.Marshal(map[string]string{
+        "level":       "error",
+        "message":     "Database connection timed out",
+        "source":      "UserService",
+        "environment": "production",
+    })
+
+    req, _ := http.NewRequest("POST", "https://api.strixhost.xyz/v1/events", bytes.NewBuffer(payload))
+    req.Header.Set("Content-Type", "application/json")
+    req.Header.Set("Authorization", "Bearer "+apiKey)
+
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    if err != nil {
+        panic(err)
+    }
+    defer resp.Body.Close()
+
+    body, _ := io.ReadAll(resp.Body)
+    fmt.Println(string(body))
+}
+```
+
+```javascript JavaScript
+const API_KEY = process.env.VEYRA_API_KEY;
+
+const res = await fetch('https://api.strixhost.xyz/v1/events', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${API_KEY}`
+  },
+  body: JSON.stringify({
+    level: 'error',
+    message: 'Database connection timed out',
+    source: 'UserService',
+    environment: 'production'
+  })
+});
+const data = await res.json();
+console.log(data);
+```
+
+</CodeGroup>
+
+### Query event metrics
+
+<CodeGroup>
+
+```python Python
+import requests
+
+API_KEY = "veyra_your_api_key_here"
+
+response = requests.get(
+    "https://api.strixhost.xyz/v1/events/metrics",
+    headers={"Authorization": f"Bearer {API_KEY}"}
+)
+response.raise_for_status()
+print(response.json())
+```
+
+```go Go
+package main
+
+import (
+    "fmt"
+    "io"
+    "net/http"
+)
+
+func main() {
+    apiKey := "veyra_your_api_key_here"
+
+    req, _ := http.NewRequest("GET", "https://api.strixhost.xyz/v1/events/metrics", nil)
+    req.Header.Set("Authorization", "Bearer "+apiKey)
+
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    if err != nil {
+        panic(err)
+    }
+    defer resp.Body.Close()
+
+    body, _ := io.ReadAll(resp.Body)
+    fmt.Println(string(body))
+}
+```
+
+```javascript JavaScript
+const API_KEY = process.env.VEYRA_API_KEY;
+
+const res = await fetch('https://api.strixhost.xyz/v1/events/metrics', {
+  headers: { 'Authorization': `Bearer ${API_KEY}` }
+});
+const metrics = await res.json();
+console.log(metrics);
+```
+
+</CodeGroup>
+
+### Send a heartbeat
+
+<CodeGroup>
+
+```python Python
+import requests
+
+API_KEY  = "veyra_your_api_key_here"
+PROJECT_ID = "your_project_id_here"
+
+response = requests.post(
+    f"https://api.strixhost.xyz/v1/heartbeats/{PROJECT_ID}",
+    headers={"Authorization": f"Bearer {API_KEY}"}
+)
+response.raise_for_status()
+print("Heartbeat sent:", response.status_code)
+```
+
+```go Go
+package main
+
+import (
+    "fmt"
+    "net/http"
+)
+
+func main() {
+    apiKey    := "veyra_your_api_key_here"
+    projectID := "your_project_id_here"
+
+    req, _ := http.NewRequest(
+        "POST",
+        "https://api.strixhost.xyz/v1/heartbeats/"+projectID,
+        nil,
+    )
+    req.Header.Set("Authorization", "Bearer "+apiKey)
+
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    if err != nil {
+        panic(err)
+    }
+    defer resp.Body.Close()
+    fmt.Println("Status:", resp.Status)
+}
+```
+
+```javascript JavaScript
+const API_KEY    = process.env.VEYRA_API_KEY;
+const PROJECT_ID = process.env.VEYRA_PROJECT_ID;
+
+const res = await fetch(`https://api.strixhost.xyz/v1/heartbeats/${PROJECT_ID}`, {
+  method: 'POST',
+  headers: { 'Authorization': `Bearer ${API_KEY}` }
+});
+console.log('Heartbeat status:', res.status);
+```
+
+</CodeGroup>
+
+## Triggering incidents
+
+Use `POST /v1/incidents` to open an incident record programmatically — for example, when a health check fails or a critical threshold is breached.
+
+<CodeGroup>
+
+```python Python
+import requests
+
+API_KEY = "veyra_your_api_key_here"
+
+response = requests.post(
+    "https://api.strixhost.xyz/v1/incidents",
+    headers={
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {API_KEY}"
+    },
+    json={
+        "type": "service_down",
+        "summary": "Payment service is not responding to health checks"
+    }
+)
+response.raise_for_status()
+incident = response.json()
+print("Incident created:", incident)
+```
+
+```go Go
+package main
+
+import (
+    "bytes"
+    "encoding/json"
+    "fmt"
+    "io"
+    "net/http"
+)
+
+func main() {
+    apiKey  := "veyra_your_api_key_here"
+    payload, _ := json.Marshal(map[string]string{
+        "type":    "service_down",
+        "summary": "Payment service is not responding to health checks",
+    })
+
+    req, _ := http.NewRequest("POST", "https://api.strixhost.xyz/v1/incidents", bytes.NewBuffer(payload))
+    req.Header.Set("Content-Type", "application/json")
+    req.Header.Set("Authorization", "Bearer "+apiKey)
+
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    if err != nil {
+        panic(err)
+    }
+    defer resp.Body.Close()
+
+    body, _ := io.ReadAll(resp.Body)
+    fmt.Println(string(body))
+}
+```
+
+```javascript JavaScript
+const API_KEY = process.env.VEYRA_API_KEY;
+
+const res = await fetch('https://api.strixhost.xyz/v1/incidents', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${API_KEY}`
+  },
+  body: JSON.stringify({
+    type: 'service_down',
+    summary: 'Payment service is not responding to health checks'
+  })
+});
+const incident = await res.json();
+console.log('Incident created:', incident);
+```
+
+</CodeGroup>
+
+<Tip>
+  Incidents are most useful when triggered automatically from health check scripts or monitoring loops — not just manually. Consider wrapping the incident call in a cron job that polls a critical endpoint and fires an incident the moment it receives a non-2xx response.
+</Tip>

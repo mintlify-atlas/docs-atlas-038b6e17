@@ -1,0 +1,92 @@
+---
+title: "Heartbeats: Uptime Monitoring for Services and Bots"
+sidebarTitle: "Heartbeats"
+description: "Heartbeats let Veyra detect when a service goes silent. Your app pings an endpoint on a schedule; missing pings trigger downtime alerts."
+---
+
+Veyra's heartbeat system uses the **dead-man's switch** pattern: your service is expected to check in with Veyra at a regular interval, and silence is treated as failure. There is no agent to install and no port to expose — your application simply fires a lightweight HTTP `POST` on a timer. If Veyra stops receiving pings within the configured window, it knows something went wrong and triggers the appropriate alerts. This approach catches the failure modes that uptime probes miss, such as a Node.js process that has deadlocked, a Discord bot that has disconnected from the gateway, or a cron job that silently exited.
+
+---
+
+## How heartbeats work
+
+1. **Configure the interval** — when you [create a project](/concepts/projects), you set a `heartbeatInterval` (in milliseconds). This tells Veyra how long to wait between expected pings before marking the service as down.
+2. **Ping the endpoint** — your running service sends a `POST` to `/v1/heartbeats/:projectId` at that same interval. Each successful ping resets Veyra's countdown timer.
+3. **Miss a ping** — if a ping does not arrive within the expected window, Veyra triggers a downtime alert (e.g. a Discord webhook notification configured on the project).
+
+The simplicity of the model is intentional: your monitoring loop has no external dependency other than being able to reach `api.strixhost.xyz`.
+
+---
+
+## Sending a heartbeat
+
+A heartbeat request requires no body — only the project ID in the URL path and your API key in the `Authorization` header.
+
+```bash
+curl -X POST https://api.strixhost.xyz/v1/heartbeats/YOUR_PROJECT_ID \
+  -H "Authorization: Bearer veyra_YOUR_API_KEY"
+```
+
+```javascript
+await fetch(`https://api.strixhost.xyz/v1/heartbeats/${PROJECT_ID}`, {
+  method: 'POST',
+  headers: {
+    Authorization: `Bearer ${API_KEY}`,
+  },
+});
+```
+
+A `200 OK` response confirms the ping was received and the timer has been reset.
+
+---
+
+## Heartbeat interval
+
+The `heartbeatInterval` is set in **milliseconds** at project creation time and represents the maximum time Veyra expects to wait between pings. Choose a value that reflects how frequently your service can realistically check in given its workload:
+
+| Scenario | Suggested interval |
+|---|---|
+| Always-on HTTP server | `30000` (30 s) |
+| Discord bot main loop | `60000` (1 min) |
+| Background worker | `60000` – `300000` (1–5 min) |
+| Cron job (runs every 5 min) | `360000` (6 min, with buffer) |
+
+Align your `setInterval` (or equivalent scheduler) period with this value. Setting your ping frequency significantly shorter than the interval wastes requests; setting it longer risks false-positive downtime alerts.
+
+---
+
+## Recommended JavaScript pattern
+
+The snippet below is a production-ready heartbeat loop. Drop it into your application's startup file and let it run for the lifetime of the process.
+
+```javascript
+const API_KEY = process.env.VEYRA_API_KEY;
+const PROJECT_ID = process.env.VEYRA_PROJECT_ID;
+const INTERVAL = 60_000; // match your project's heartbeatInterval
+
+setInterval(async () => {
+  try {
+    await fetch(`https://api.strixhost.xyz/v1/heartbeats/${PROJECT_ID}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${API_KEY}` }
+    });
+  } catch (err) {
+    console.error('Heartbeat failed:', err.message);
+  }
+}, INTERVAL);
+```
+
+<Warning>
+  **Never let the heartbeat loop crash.** Always wrap the ping in a `try/catch` block. An unhandled rejection inside `setInterval` can bring down the entire Node.js process — which means your service goes offline *and* stops sending heartbeats, making it impossible to distinguish a crash from a simple network hiccup. Log the error, then let the interval fire again on the next tick.
+</Warning>
+
+---
+
+## Use cases
+
+Heartbeats are useful anywhere a process must keep running continuously:
+
+- **Node.js background jobs** — long-running workers processing queues or scheduled tasks.
+- **Discord bots** — detect gateway disconnections or event loop freezes before users notice the bot is unresponsive.
+- **Cron tasks** — confirm that a scheduled job not only started but ran to completion within the expected window.
+- **Microservices** — lightweight health signal for services that do not expose a public HTTP endpoint reachable by an external probe.

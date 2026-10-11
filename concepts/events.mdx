@@ -1,0 +1,91 @@
+---
+title: "Events: Structured Log Monitoring in Veyra"
+sidebarTitle: "Events"
+description: "Events are structured log entries sent from your application to Veyra. Query aggregated metrics to monitor error rates and service health over time."
+---
+
+**Events** are structured telemetry records emitted by your application and ingested by Veyra in real time. Unlike raw log files, every event carries a fixed schema — a severity level, a human-readable message, the originating service, and the deployment environment. This structure makes it possible to aggregate across thousands of events and answer questions like *"how many errors did the Payment Service produce in the last hour?"* or *"did the staging deployment introduce new warnings?"*
+
+---
+
+## Event fields
+
+<ParamField body="level" type="string" required>
+  The severity of the event. Must be one of `"info"`, `"warn"`, `"error"`, or `"debug"`. Use consistent levels across your services so that aggregated metrics remain comparable.
+</ParamField>
+
+<ParamField body="message" type="string" required>
+  A human-readable description of what happened. Keep messages concise but specific enough to act on — for example, `"Stripe webhook signature verification failed"` rather than just `"error"`.
+</ParamField>
+
+<ParamField body="source" type="string" required>
+  The name of the service or component that generated the event (e.g. `"Payment-Service"`, `"Auth-Worker"`, `"Discord-Bot"`). This value is used as a dimension in metric queries, so consistent naming across deployments is important.
+</ParamField>
+
+<ParamField body="environment" type="string" required>
+  The deployment environment from which the event originated (e.g. `"production"`, `"staging"`, `"development"`). Aligning this value with your project's `environment` field makes filtering straightforward.
+</ParamField>
+
+---
+
+## Sending an event
+
+Send a `POST` request to `/v1/events` with your project's API key as a Bearer token. No additional headers beyond `Content-Type` and `Authorization` are required.
+
+```bash
+curl -X POST https://api.strixhost.xyz/v1/events \
+  -H "Authorization: Bearer veyra_YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "level": "error",
+    "message": "Stripe webhook signature verification failed",
+    "source": "Payment-Service",
+    "environment": "production"
+  }'
+```
+
+```javascript
+await fetch('https://api.strixhost.xyz/v1/events', {
+  method: 'POST',
+  headers: {
+    'Authorization': 'Bearer veyra_YOUR_API_KEY',
+    'Content-Type': 'application/json',
+  },
+  body: JSON.stringify({
+    level: 'error',
+    message: 'Stripe webhook signature verification failed',
+    source: 'Payment-Service',
+    environment: 'production',
+  }),
+});
+```
+
+A `201 Created` response indicates the event was successfully ingested and is available for querying.
+
+---
+
+## Event metrics
+
+Rather than exposing raw event records, Veyra aggregates your event stream and returns summary statistics via `GET /v1/events/metrics`. This endpoint is the primary way to assess the health of a service over time — for example, tracking error rate trends or comparing activity across environments.
+
+```bash
+curl -X GET https://api.strixhost.xyz/v1/events/metrics \
+  -H "Authorization: Bearer veyra_YOUR_API_KEY"
+```
+
+The response includes aggregated counts broken down by level and source, giving you an at-a-glance view of how many `info`, `warn`, `error`, and `debug` events each service has produced within the reporting window.
+
+<Tip>
+  Use **consistent `source` names** across all instances and deployments of a service. If one deployment sends `"payment-service"` and another sends `"Payment-Service"`, the metrics endpoint will treat them as two separate sources and your aggregated error counts will be split. Establish a naming convention early and enforce it via an environment variable.
+</Tip>
+
+---
+
+## Use cases
+
+Events are a flexible primitive — any structured log worth querying later is a good candidate:
+
+- **Error tracking** — capture exceptions with `level: "error"` and the error message so you can spot spikes before users report them.
+- **Audit logs** — record sensitive actions (user data exports, permission changes) with `level: "info"` for a tamper-evident trail.
+- **Deployment events** — emit a `level: "info"` event when a new version starts up, making it easy to correlate metric changes with deploys.
+- **Discord bot command logs** — log every slash command invocation with `level: "debug"` so you can diagnose unexpected bot behaviour without tailing local logs.

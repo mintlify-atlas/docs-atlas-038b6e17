@@ -1,0 +1,157 @@
+---
+title: "Monitor a Node.js Application with Veyra"
+sidebarTitle: "Node.js Monitoring"
+description: "Send structured log events, track uptime with heartbeats, and trigger incidents from a Node.js application using the Veyra REST API."
+---
+
+Integrating Veyra into a production Node.js app gives you full observability in a single REST API: structured error logs, live uptime heartbeats, and automatic incident creation — all flowing into a platform you host yourself. This guide walks through every step, from environment setup to a production-ready Express.js error handler.
+
+## Prerequisites
+
+- A Veyra account and a project with an API key. Follow the [Quickstart](/quickstart) if you haven't set this up yet.
+- Node.js 18 or later (native `fetch` is required; no extra HTTP library needed).
+
+## Environment setup
+
+Never hardcode credentials in source files. Store your Veyra API key and project ID as environment variables and load them at runtime.
+
+```bash .env
+VEYRA_API_KEY=veyra_your_api_key_here
+VEYRA_PROJECT_ID=your_project_id_here
+```
+
+Load the file in development using a package like [`dotenv`](https://github.com/motdotla/dotenv), or inject the variables through your deployment platform's secrets manager in production.
+
+## Creating a Veyra client
+
+Centralise all Veyra interactions in a single helper module so that every part of your application uses the same credentials, base URL, and error-handling behaviour.
+
+```javascript veyra.js
+const BASE_URL = 'https://api.strixhost.xyz';
+const API_KEY = process.env.VEYRA_API_KEY;
+const PROJECT_ID = process.env.VEYRA_PROJECT_ID;
+
+export async function logEvent({ level, message, source, environment = 'production' }) {
+  const res = await fetch(`${BASE_URL}/v1/events`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${API_KEY}`
+    },
+    body: JSON.stringify({ level, message, source, environment })
+  });
+  if (!res.ok) throw new Error(`Veyra event failed: ${res.status}`);
+  return res.json();
+}
+
+export async function triggerIncident({ type, summary }) {
+  const res = await fetch(`${BASE_URL}/v1/incidents`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${API_KEY}`
+    },
+    body: JSON.stringify({ type, summary })
+  });
+  if (!res.ok) throw new Error(`Veyra incident failed: ${res.status}`);
+  return res.json();
+}
+
+export function startHeartbeat(intervalMs = 60_000) {
+  setInterval(async () => {
+    try {
+      await fetch(`${BASE_URL}/v1/heartbeats/${PROJECT_ID}`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${API_KEY}` }
+      });
+    } catch (err) {
+      console.error('Veyra heartbeat error:', err.message);
+    }
+  }, intervalMs);
+}
+```
+
+The three exports cover the full monitoring surface:
+
+| Export | Purpose |
+|---|---|
+| `logEvent` | Send a structured log entry (error, warn, info) to `/v1/events` |
+| `triggerIncident` | Open an incident record in `/v1/incidents` |
+| `startHeartbeat` | Begin a background ping loop to `/v1/heartbeats/:projectId` |
+
+<Tip>
+  The `intervalMs` you pass to `startHeartbeat` should be **shorter than the `heartbeatInterval` you configured on your Veyra project**. For example, if your project's `heartbeatInterval` is `60000` ms (60 seconds), call `startHeartbeat(30_000)` so that transient network hiccups don't cause false-positive downtime alerts.
+</Tip>
+
+## Logging errors
+
+The most practical integration point in an Express application is the four-argument error handler middleware. Attach it after all your routes and it will intercept every error thrown or passed to `next(err)`.
+
+```javascript app.js
+import express from 'express';
+import { logEvent, triggerIncident, startHeartbeat } from './veyra.js';
+
+const app = express();
+
+// Start heartbeat on launch
+startHeartbeat(60_000);
+
+// Error handler middleware
+app.use(async (err, req, res, next) => {
+  // Log to Veyra
+  await logEvent({
+    level: 'error',
+    message: err.message,
+    source: 'Express-API',
+    environment: process.env.NODE_ENV || 'production'
+  });
+
+  // Trigger incident for critical errors
+  if (err.critical) {
+    await triggerIncident({
+      type: 'api_error',
+      summary: `Critical error on ${req.method} ${req.path}: ${err.message}`
+    });
+  }
+
+  res.status(500).json({ error: 'Internal server error' });
+});
+```
+
+<Warning>
+  **Do not await heartbeat calls in your request path.** `startHeartbeat` already runs on a detached `setInterval` — it is fire-and-forget by design. If you manually call the heartbeat endpoint inside a request handler and await it, a slow or unavailable Veyra server will add latency to every user request. Keep heartbeats on their own timer, completely outside the critical path.
+</Warning>
+
+Beyond unhandled errors, you can call `logEvent` anywhere in your application to capture meaningful milestones:
+
+```javascript
+// Informational log — successful payment processed
+await logEvent({
+  level: 'info',
+  message: `Payment processed for order ${orderId}`,
+  source: 'Payment-Service',
+  environment: 'production'
+});
+
+// Warning — external API responded slowly
+await logEvent({
+  level: 'warn',
+  message: `Stripe API responded in ${latencyMs}ms — above threshold`,
+  source: 'Payment-Service',
+  environment: 'production'
+});
+```
+
+## Querying metrics
+
+Once events are flowing in, you can pull aggregated metrics back into your application — for a dashboard, a status endpoint, or an automated alerting check.
+
+```javascript
+const res = await fetch('https://api.strixhost.xyz/v1/events/metrics', {
+  headers: { 'Authorization': `Bearer ${process.env.VEYRA_API_KEY}` }
+});
+const metrics = await res.json();
+console.log(metrics);
+```
+
+The response contains aggregate counts broken down by level and time window, giving you a programmatic view of your application's health without opening a separate dashboard.

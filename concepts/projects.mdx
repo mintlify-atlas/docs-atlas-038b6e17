@@ -1,0 +1,77 @@
+---
+title: "Projects: Organizing Your Monitoring in Veyra"
+sidebarTitle: "Projects"
+description: "Projects are the top-level organizational unit in Veyra. Each project has its own API key, heartbeat interval, and event stream."
+---
+
+A **project** is the root-level container for all monitoring activity in Veyra. Every heartbeat, event, and incident belongs to exactly one project, giving you a clean boundary between applications, services, or deployment environments. When you create a project you receive a unique project ID and can generate scoped API keys — meaning your production Node.js service, your Discord bot, and your staging environment all stay completely isolated from one another.
+
+---
+
+## Creating a project
+
+Projects are created via the REST API using a JWT issued by Veyra's authentication service. The request body accepts the following fields:
+
+| Field | Type | Description |
+|---|---|---|
+| `name` | string | A human-readable label for the project (e.g. `"payments-api"`). |
+| `environment` | string | The deployment environment this project targets (e.g. `"production"`, `"staging"`). |
+| `heartbeatInterval` | number | How often (in **milliseconds**) your service is expected to ping the heartbeat endpoint. |
+
+```bash
+curl -X POST https://api.strixhost.xyz/v1/projects \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "payments-api",
+    "environment": "production",
+    "heartbeatInterval": 60000
+  }'
+```
+
+A successful response returns the newly created project object, including its `id` and any default settings Veyra applies.
+
+<Note>
+  Project management endpoints (create, update, delete) require a **JWT token** issued by Veyra's auth service. Telemetry endpoints — heartbeats, events, and incidents — use a **project-scoped API key** prefixed with `veyra_`. The two token types are not interchangeable.
+</Note>
+
+---
+
+## Project ID
+
+When a project is created, Veyra returns a unique `id` for that project. Hold onto this value — it is used in two important places:
+
+- **Heartbeat URLs** — heartbeat pings are sent to `/v1/heartbeats/:projectId`, so Veyra knows which project's uptime clock to reset.
+- **API key generation** — keys are scoped to a project; when you generate a key you pass the project ID so all telemetry sent with that key is automatically associated with the correct project.
+
+Store the project ID in your deployment configuration (e.g. as an environment variable `VEYRA_PROJECT_ID`) alongside the API key so your application can reference both at runtime.
+
+---
+
+## Environments
+
+It is strongly recommended to create **one project per environment** rather than sharing a single project across production and staging. This practice gives you:
+
+- **Clean metric separation** — event error rates and heartbeat history for production are never polluted by staging noise.
+- **Independent alerting** — you can attach different Discord webhooks or notification rules to each environment's project.
+- **Scoped API keys** — a staging key cannot accidentally send telemetry to production.
+
+A typical setup might look like this:
+
+| Project name | Environment | Used by |
+|---|---|---|
+| `payments-api-prod` | `production` | Live production service |
+| `payments-api-staging` | `staging` | CI/CD preview deployments |
+| `discord-bot-prod` | `production` | Live Discord bot |
+
+---
+
+## API keys per project
+
+Each project maintains its own set of API keys. Keys are prefixed with `veyra_` and must be sent as a Bearer token in the `Authorization` header of every telemetry request. Because keys are project-scoped, rotating a key for one project has no impact on any other project.
+
+To create and manage API keys for a project, see the [API Keys reference](/api/keys).
+
+<Note>
+  JWT tokens are required for **project management** (creating, updating, or deleting projects). Once a project exists, all ongoing telemetry — heartbeats, events, and incidents — is authenticated with the project's **`veyra_` API key**, not a JWT.
+</Note>

@@ -1,0 +1,82 @@
+{
+  "projectType": "sdk-library",
+  "projectName": "Veyra SDK",
+  "projectDescription": "The official TypeScript SDK and REST API reference for Veyra — a lightweight, self-hosted developer infrastructure platform for monitoring Node.js applications, tracking Discord bots, and managing SaaS incidents.",
+  "theme": "luma",
+  "primaryColor": "#6C63FF",
+  "lightColor": "#8B85FF",
+  "darkColor": "#4B44CC",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "authentication"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/projects",
+              "concepts/events",
+              "concepts/heartbeats",
+              "concepts/incidents"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/nodejs-monitoring",
+              "guides/discord-bot",
+              "guides/rest-integration"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Account Management",
+            "pages": [
+              "api/auth",
+              "api/projects",
+              "api/keys"
+            ]
+          },
+          {
+            "group": "Telemetry",
+            "pages": [
+              "api/events",
+              "api/heartbeats",
+              "api/incidents"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Structured event logging for Node.js applications",
+    "Heartbeat uptime monitoring for services and Discord bots",
+    "SaaS incident management with Discord webhook alerts",
+    "JWT-based account management and API key generation",
+    "REST API usable from any language (Python, Go, Rust, etc.)",
+    "Self-hosted developer infrastructure platform"
+  ],
+  "publicApiSurface": [
+    "POST /v1/auth/register",
+    "POST /v1/auth/login",
+    "POST /v1/projects",
+    "POST /v1/projects/:id/keys",
+    "POST /v1/events",
+    "GET /v1/events/metrics",
+    "POST /v1/heartbeats/:projectId",
+    "POST /v1/incidents"
+  ]
+}

@@ -1,0 +1,141 @@
+---
+title: "Monitor Discord Bot Uptime with Veyra Heartbeats"
+sidebarTitle: "Discord Bot Monitoring"
+description: "Use Veyra heartbeat pings to detect when your Discord bot goes offline, and log bot events for debugging command errors and API failures."
+---
+
+Discord bots can go silently offline — a crashed Node process, an expired token, or a network blip will disconnect your bot without any dashboard alert or notification. Unless something is actively checking that the bot is alive and responding, downtime goes unnoticed until a user complains. Veyra heartbeats solve this by expecting a ping on a regular interval: if the pings stop arriving, Veyra marks the service as down and raises an alert — giving you visibility into the silence before your users do.
+
+## Setup
+
+Before adding monitoring code, make sure you have:
+
+- A **Veyra project dedicated to this bot**. Using a separate project per bot keeps metrics, heartbeat status, and incident history cleanly isolated from your other services.
+- The project's **API key** (`veyra_…`) and **project ID**, both stored as environment variables alongside your Discord bot token.
+
+```bash .env
+VEYRA_API_KEY=veyra_your_api_key_here
+VEYRA_PROJECT_ID=your_project_id_here
+DISCORD_TOKEN=your_discord_bot_token_here
+```
+
+## Adding heartbeats to your bot
+
+Heartbeats must only begin once the bot has successfully authenticated with Discord. The `ready` event fired by `discord.js` is the correct place to start the interval — at that point you know the bot is online and the heartbeat loop is meaningful.
+
+```javascript bot.js
+import { Client, GatewayIntentBits } from 'discord.js';
+
+const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+
+const VEYRA_API_KEY = process.env.VEYRA_API_KEY;
+const VEYRA_PROJECT_ID = process.env.VEYRA_PROJECT_ID;
+const HEARTBEAT_INTERVAL = 60_000; // 60 seconds
+
+client.once('ready', () => {
+  console.log(`Logged in as ${client.user.tag}`);
+
+  // Start heartbeat loop when bot connects
+  setInterval(async () => {
+    try {
+      await fetch(`https://api.strixhost.xyz/v1/heartbeats/${VEYRA_PROJECT_ID}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${VEYRA_API_KEY}` }
+      });
+    } catch (err) {
+      console.error('Veyra heartbeat failed:', err.message);
+    }
+  }, HEARTBEAT_INTERVAL);
+});
+
+client.login(process.env.DISCORD_TOKEN);
+```
+
+<Warning>
+  **Always start the heartbeat loop inside the `ready` event handler — never before.** If you call `setInterval` at the top level of your file, the pings will begin before the bot has connected to Discord. This means your uptime metric will include time during which the bot is not actually serving users, and if the bot fails to log in, you'll be sending heartbeats for a service that never came online.
+</Warning>
+
+The `HEARTBEAT_INTERVAL` here (60 seconds) should be **less than or equal to** the `heartbeatInterval` configured on your Veyra project. Set the project-level interval to `120000` ms (2 minutes) and ping every 60 seconds to give yourself a comfortable buffer against occasional network delays.
+
+## Logging bot events
+
+Command errors in Discord bots are notoriously easy to miss — the interaction silently fails from the user's perspective, and there's no default logging. Send failures directly to Veyra so they appear in your project's event feed.
+
+```javascript commands/ping.js
+export async function execute(interaction) {
+  try {
+    await interaction.reply('Pong!');
+  } catch (err) {
+    // Log the failure to Veyra
+    await fetch('https://api.strixhost.xyz/v1/events', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.VEYRA_API_KEY}`
+      },
+      body: JSON.stringify({
+        level: 'error',
+        message: err.message,
+        source: 'DiscordBot-ping',
+        environment: 'production'
+      })
+    });
+  }
+}
+```
+
+Apply the same pattern to any command handler that interacts with external APIs, databases, or stateful operations. The `source` field is especially useful here — naming it after the specific command (e.g. `DiscordBot-ping`, `DiscordBot-ban`, `DiscordBot-leaderboard`) lets you filter the event feed by command when debugging.
+
+<Tip>
+  Create a shared `logBotEvent(source, err)` helper and import it in every command file. That way you get consistent event formatting — same `environment` tag, same error shape — without copy-pasting the `fetch` call into every handler.
+</Tip>
+
+## Triggering incidents on bot crash
+
+Unhandled exceptions and unexpected process exits are the most disruptive failures a Discord bot can have. Use Node's built-in process event hooks to fire a Veyra incident before the process terminates, giving you a timestamped record of the crash.
+
+```javascript bot.js
+const VEYRA_API_KEY = process.env.VEYRA_API_KEY;
+
+async function reportIncident(type, summary) {
+  try {
+    await fetch('https://api.strixhost.xyz/v1/incidents', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${VEYRA_API_KEY}`
+      },
+      body: JSON.stringify({ type, summary })
+    });
+  } catch {
+    // Best-effort — process is already exiting
+  }
+}
+
+process.on('uncaughtException', async (err) => {
+  await reportIncident('bot_crash', `Uncaught exception: ${err.message}`);
+  process.exit(1);
+});
+
+process.on('exit', (code) => {
+  if (code !== 0) {
+    // Fire-and-forget — synchronous fetch isn't possible on 'exit',
+    // so use 'uncaughtException' and 'unhandledRejection' for async reporting.
+    console.error(`Bot exited with code ${code}`);
+  }
+});
+
+process.on('unhandledRejection', async (reason) => {
+  const message = reason instanceof Error ? reason.message : String(reason);
+  await reportIncident('bot_crash', `Unhandled promise rejection: ${message}`);
+  process.exit(1);
+});
+```
+
+<Note>
+  The `exit` event in Node.js is synchronous — you cannot reliably `await` a `fetch` call inside it. Use `uncaughtException` and `unhandledRejection` for async incident reporting, and reserve `exit` for synchronous cleanup like flushing write streams.
+</Note>
+
+<Tip>
+  Consider creating a **separate Veyra project for each Discord bot** you run. Shared projects make it difficult to distinguish whether a spike in error events came from one bot or another, and heartbeat intervals can't be configured independently. One project per bot gives you clean metrics, isolated incident history, and per-bot alerting thresholds.
+</Tip>

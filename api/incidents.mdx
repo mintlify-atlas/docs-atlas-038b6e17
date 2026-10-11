@@ -1,0 +1,147 @@
+---
+title: "Incidents API — Trigger Alerts and Discord Notifications"
+sidebarTitle: "Incidents"
+description: "POST /v1/incidents creates an incident and fires your project's Discord webhook. Use this for critical failures that need immediate human attention."
+---
+
+The Incidents endpoint lets you programmatically trigger alerts from your application code — when an incident is created, Veyra immediately fires the Discord webhook configured on your project. This puts a structured, actionable notification in front of your on-call team with zero manual steps, even when your own alerting infrastructure is the thing that's broken.
+
+<Note>
+  Incidents use API key authentication (`Authorization: Bearer veyra_YOUR_API_KEY`), **not** a JWT session token. This makes incident creation safe to call from background workers, cron jobs, and other non-interactive contexts that don't carry a user session.
+</Note>
+
+---
+
+## POST /v1/incidents
+
+Creates an incident record and triggers the Discord webhook notification configured for the authenticated project. The webhook fires synchronously — by the time you receive a `200` response, the Discord message has been dispatched.
+
+**Endpoint:** `POST https://api.strixhost.xyz/v1/incidents`
+
+**Authentication:** `Authorization: Bearer veyra_API_KEY`
+
+### Request body
+
+<ParamField body="type" type="string" required>
+  A machine-readable incident category string (e.g. `"database_failure"`, `"payment_error"`, `"bot_offline"`). Use short, lowercase, underscore-separated identifiers — these are used for filtering and automation. See [Incident types](#incident-types) below for recommended values.
+</ParamField>
+
+<ParamField body="summary" type="string" required>
+  A human-readable description of what happened, including enough context for a responder who wasn't watching. Include what failed, what the impact is, and what to check first. This text appears verbatim in the Discord notification.
+</ParamField>
+
+### Request examples
+
+<CodeGroup>
+
+```bash bash
+curl -X POST https://api.strixhost.xyz/v1/incidents \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer veyra_your_api_key_here" \
+  -d '{"type": "database_failure", "summary": "Main PostgreSQL cluster stopped responding"}'
+```
+
+```javascript javascript
+const res = await fetch('https://api.strixhost.xyz/v1/incidents', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'Authorization': 'Bearer veyra_your_api_key_here'
+  },
+  body: JSON.stringify({
+    type: 'database_failure',
+    summary: 'Main PostgreSQL cluster stopped responding'
+  })
+});
+const incident = await res.json();
+console.log('Incident created:', incident.id);
+```
+
+```python python
+import requests
+
+response = requests.post(
+    'https://api.strixhost.xyz/v1/incidents',
+    headers={
+        'Authorization': 'Bearer veyra_your_api_key_here',
+        'Content-Type': 'application/json'
+    },
+    json={
+        'type': 'database_failure',
+        'summary': 'Main PostgreSQL cluster stopped responding'
+    }
+)
+print('Incident created:', response.json())
+```
+
+</CodeGroup>
+
+### Response
+
+**200 — Incident created and webhook fired**
+
+<ResponseField name="id" type="string">
+  Unique identifier for the created incident record.
+</ResponseField>
+
+<ResponseField name="type" type="string">
+  The machine-readable incident category as provided in the request.
+</ResponseField>
+
+<ResponseField name="summary" type="string">
+  The human-readable description as provided in the request.
+</ResponseField>
+
+<ResponseField name="projectId" type="string">
+  The project ID this incident was created against, derived from the API key used to authenticate.
+</ResponseField>
+
+<ResponseField name="createdAt" type="string">
+  ISO 8601 timestamp of when the incident was created.
+</ResponseField>
+
+<ResponseField name="webhookFired" type="boolean">
+  `true` if the Discord webhook was dispatched successfully. `false` if the project has no webhook configured or the webhook delivery failed. The incident record is always created regardless of this value.
+</ResponseField>
+
+**400 — Missing type or summary**
+
+Returned when either `type` or `summary` is absent from the request body. The response will include a `message` field describing the missing fields.
+
+**401 — Invalid API key**
+
+Returned when the `Authorization` header is missing, malformed, or the API key is not recognised.
+
+---
+
+## Incident types
+
+Use consistent, machine-readable `type` strings across your services. Consistent naming makes incidents filterable in the dashboard and enables future automation (routing, suppression, auto-resolution). Use lowercase with underscores — avoid spaces, camelCase, or punctuation.
+
+Recommended type strings:
+
+| Type | When to use |
+|---|---|
+| `database_failure` | Database unreachable, connection pool exhausted, or replication broken |
+| `payment_error` | Payment processor errors, failed charges, or webhook delivery failures |
+| `bot_offline` | A Discord bot, Slack bot, or similar process has stopped responding |
+| `deploy_failure` | A deployment pipeline failed or rolled back unexpectedly |
+| `rate_limit_exceeded` | An upstream API or internal service is being throttled |
+
+You are free to define your own types — these are suggestions to bootstrap a consistent taxonomy across your team.
+
+---
+
+## When to trigger incidents vs events
+
+Both the Events API and the Incidents API capture information about your running systems, but they serve different purposes:
+
+- **Use [events](/api/events)** for all ongoing telemetry — errors, warnings, info logs, debug traces. Events are high-volume, automatically aggregated, and meant for retrospective analysis and dashboards.
+
+- **Use incidents** only for critical failures that require **immediate human response** — situations where a person needs to be paged right now and act within minutes. Incidents fire your Discord webhook and create a permanent record. They are low-volume and high-signal.
+
+A good rule of thumb: if you'd want to be woken up at 3 AM about it, it's an incident. If it's something you'd review over morning coffee, it's an event.
+
+<Tip>
+  Write `summary` values that are immediately actionable for a responder who has no context. A strong summary answers three questions: **what failed** ("Main PostgreSQL cluster"), **what the impact is** ("all writes from Payment-Service are failing"), and **what to check first** ("check RDS console → `prod-db-01` → Recent Events"). Avoid vague summaries like `"Something broke"` — by the time someone reads it, every second spent asking follow-up questions costs you.
+</Tip>
